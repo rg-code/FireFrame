@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Frame: a two-app text home screen with an Immich photo screensaver, for Fire TV (Fire OS 6/7/8).
+     Fire OS will not let a sideloaded app own the Home button, so a helper (Home on Fire) redirects Home here.
+     The screensaver is a standard DreamService, selected over ADB with
+       settings put secure screensaver_components com.framehome/com.framehome.ImmichDream -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.framehome">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Granted over ADB by install.sh, so Frame can switch between its screensaver and the fallback. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- Granted over ADB by `install.sh import`, to read the pushed home screen backgrounds. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/icon"
+        android:banner="@drawable/banner"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Frame">
+
+        <activity
+            android:name=".HomeActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Lets launcher pickers (Home on Fire, Launcher Manager) list this app. Fire OS itself ignores it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Screensaver preview. Started from the home screen's menu, or over ADB (shell holds DUMP). -->
+        <activity
+            android:name=".SlideshowActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:screenOrientation="landscape"
+            android:excludeFromRecents="true" />
+
+        <service
+            android:name=".ImmichDream"
+            android:exported="true"
+            android:label="@string/screensaver_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".HealthJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Configuration over ADB: am broadcast -n com.framehome/.ConfigReceiver -\-es url ... -\-es key ...
+             Only callers holding DUMP may send it; on a stock device that is the ADB shell, not other apps. -->
+        <receiver
+            android:name=".ConfigReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+</manifest>

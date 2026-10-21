@@ -1,0 +1,5 @@
+build/*
+!build/frame.apk
+.screensaver.orig
+*.png
+backgrounds/

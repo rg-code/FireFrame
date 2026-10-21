@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The apps on the home screen, top to bottom. Each package entry may list several package names
+     separated by "|"; the first one installed is used (SmartTube ships stable and beta builds). -->
+<resources>
+    <string-array name="app_labels">
+        <item>Stremio</item>
+        <item>SmartTube</item>
+    </string-array>
+    <string-array name="app_packages">
+        <item>com.stremio.one</item>
+        <item>com.amazon.firetv.youtube|com.teamsmart.videomanager.tv|com.liskovsoft.smarttubetv.beta|com.liskovsoft.smarttubetv</item>
+    </string-array>
+</resources>
