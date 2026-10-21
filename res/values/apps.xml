@@ -10,4 +10,10 @@
         <item>com.stremio.one</item>
         <item>com.amazon.firetv.youtube|com.teamsmart.videomanager.tv|com.liskovsoft.smarttubetv.beta|com.liskovsoft.smarttubetv</item>
     </string-array>
+    <!-- Shown instead of the label: a one-color version of the app's icon (see AppGlyph.java), or
+         empty to show the label as text. -->
+    <string-array name="app_icons">
+        <item>stremio</item>
+        <item>youtube</item>
+    </string-array>
 </resources>

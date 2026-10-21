@@ -57,7 +57,7 @@ final class ArtStore {
     private static final long ROTATE_MS = 24L * 60 * 60 * 1000;
     private static final int ROTATE_COUNT = 4;
     // Bump when the selection rules change, so the lists are fetched again and dropped works deleted.
-    private static final int LIST_VERSION = 3;
+    private static final int LIST_VERSION = 4;
 
     /** One painting. {@code image} may be null until {@link Source#resolve} fills it in. */
     static final class Work {
@@ -172,7 +172,8 @@ final class ArtStore {
                 Work full = source == null ? null : source.resolve(w);
                 // A Met work's title is only known now; skip it if another museum already has it.
                 if (full != null && w.title.length() == 0 && seenTitles.contains(sameWork(full))) full = null;
-                if (full == null || full.image == null || violent(full.title + " " + full.caption, null)) {
+                if (full == null || full.image == null || full.caption.length() == 0
+                        || violent(full.title + " " + full.caption, null)) {
                     skip.add(w.id);
                     continue;
                 }
@@ -266,7 +267,8 @@ final class ArtStore {
         for (Work w : merged) ids.add(fileName(w.id));
         for (File f : savedFiles()) {
             String name = f.getName().substring(0, f.getName().length() - 4);
-            if (!ids.contains(name)) {
+            // Also works saved before every work needed a caption, so captioned ones replace them.
+            if (!ids.contains(name) || caption(name).length() == 0) {
                 f.delete();
                 new File(dir, name + ".txt").delete();
             }
@@ -410,6 +412,15 @@ final class ArtStore {
     }
 
     // ---------------------------------------------------------------- disk
+
+    private String caption(String name) {
+        try {
+            String[] lines = new String(readAll(new FileInputStream(new File(dir, name + ".txt"))), "UTF-8").split("\n", -1);
+            return lines.length >= 3 ? lines[2].trim() : "";
+        } catch (IOException e) {
+            return "";
+        }
+    }
 
     private static String fileName(String id) {
         return id.replaceAll("[^A-Za-z0-9.]", "_");

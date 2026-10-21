@@ -10,15 +10,17 @@ import java.util.List;
 
 /**
  * Where {@link ArtStore} finds paintings. All four are open, need no key, and give public-domain
- * images:
+ * images. Only works with a caption are kept (a sentence from the museum or from Wikipedia):
  *
  *   aic  Art Institute of Chicago: highlighted ("boosted") public-domain paintings, IIIF images at
  *        the 1686 px size the museum caches (other sizes are rendered on request and can take a minute)
  *   met  The Met: highlighted paintings (search v1.1; v1 was retired in October 2026). Each one's
- *        record is read when it is about to be saved, and only public-domain ones are kept
+ *        record is read when it is about to be saved, and only public-domain ones are kept. The Met
+ *        has no descriptions, so the caption comes from the work's English Wikipedia article, found
+ *        through the record's Wikidata link
  *   cma  Cleveland Museum of Art: highlighted CC0 paintings, with the museum's "did you know" line
- *   wd   Wikidata: paintings made before 1930 with articles in at least 20 Wikipedias, most famous
- *        first; images from Wikimedia Commons, captions from the English Wikipedia summary
+ *   wd   Wikidata: paintings made before 1930 with articles in at least 20 Wikipedias (and one in
+ *        English), most famous first; images from Wikimedia Commons, captions from its summary
  */
 final class ArtSources {
     private ArtSources() {
@@ -45,7 +47,7 @@ final class ArtSources {
                     .put(new JSONObject().put("exists", new JSONObject().put("field", "image_id")));
             JSONArray fields = new JSONArray();
             for (String s : new String[] {"id", "title", "artist_title", "date_display", "image_id",
-                    "short_description", "subject_titles", "term_titles"}) {
+                    "short_description", "description", "subject_titles", "term_titles"}) {
                 fields.put(s);
             }
             List<ArtStore.Work> out = new ArrayList<ArtStore.Work>();
@@ -62,10 +64,12 @@ final class ArtSources {
                     JSONObject a = data.getJSONObject(i);
                     String image = ArtStore.string(a, "image_id");
                     String title = ArtStore.clean(ArtStore.string(a, "title"));
+                    // The short description when there is one, else the first sentence of the long one.
                     String about = ArtStore.clean(ArtStore.string(a, "short_description"));
+                    if (about.length() == 0) about = ArtStore.clean(ArtStore.string(a, "description"));
                     List<String> tags = strings(a.optJSONArray("subject_titles"));
                     tags.addAll(strings(a.optJSONArray("term_titles")));
-                    if (image == null || ArtStore.violent(title + " " + about, tags)) continue;
+                    if (image == null || about.length() == 0 || ArtStore.violent(title + " " + about, tags)) continue;
                     out.add(new ArtStore.Work("aic:" + a.getInt("id"),
                             "https://www.artic.edu/iiif/2/" + image + "/full/1686,/0/default.jpg", title,
                             credit(ArtStore.string(a, "artist_title"), ArtStore.string(a, "date_display")),
@@ -117,9 +121,26 @@ final class ArtSources {
             if (t != null) for (int i = 0; i < t.length(); i++) tags.add(t.getJSONObject(i).optString("term"));
             String title = ArtStore.clean(ArtStore.string(a, "title"));
             if (ArtStore.violent(title, tags)) return null;
+            String wikidata = ArtStore.string(a, "objectWikidata_URL");
+            if (wikidata == null || wikidata.lastIndexOf('/') < 0) return null;
+            String article = englishArticle(wikidata.substring(wikidata.lastIndexOf('/') + 1));
+            String extract = article == null ? null : summary(article);
+            if (extract == null || ArtStore.violent(extract, null)) return null;
             // The original (often 4000 px and several MB) is shrunk on the TV; "web-large" is only 600 px.
             return new ArtStore.Work(w.id, image, title,
-                    credit(ArtStore.string(a, "artistDisplayName"), ArtStore.string(a, "objectDate")), "", w.extra);
+                    credit(ArtStore.string(a, "artistDisplayName"), ArtStore.string(a, "objectDate")),
+                    ArtStore.informativeSentence(extract), w.extra);
+        }
+
+        /** The English Wikipedia article about a Wikidata item, or null if there is none. */
+        private static String englishArticle(String qid) throws Exception {
+            JSONObject e = new JSONObject(ArtStore.fetch("https://www.wikidata.org/w/api.php?action=wbgetentities&ids="
+                    + URLEncoder.encode(qid, "UTF-8") + "&props=sitelinks&sitefilter=enwiki&format=json", null, null, 20000))
+                    .getJSONObject("entities").optJSONObject(qid);
+            JSONObject links = e == null ? null : e.optJSONObject("sitelinks");
+            JSONObject en = links == null ? null : links.optJSONObject("enwiki");
+            String title = en == null ? null : ArtStore.string(en, "title");
+            return title == null ? null : URLEncoder.encode(title.replace(' ', '_'), "UTF-8");
         }
     }
 
@@ -146,15 +167,15 @@ final class ArtSources {
                 String title = ArtStore.clean(ArtStore.string(a, "title"));
                 String fact = ArtStore.clean(ArtStore.string(a, "did_you_know"));
                 String about = ArtStore.clean(ArtStore.string(a, "description"));
-                if (image == null || ArtStore.violent(title + " " + fact + " " + about, null)) continue;
+                String caption = fact.length() > 0 ? ArtStore.firstSentence(fact) : ArtStore.firstSentence(about);
+                if (image == null || caption.length() == 0 || ArtStore.violent(title + " " + fact + " " + about, null)) continue;
                 // "George Bellows (American, 1882–1925)" becomes "George Bellows".
                 JSONArray creators = a.optJSONArray("creators");
                 String artist = creators == null || creators.length() == 0 ? null
                         : ArtStore.string(creators.getJSONObject(0), "description");
                 if (artist != null && artist.contains(" (")) artist = artist.substring(0, artist.indexOf(" ("));
                 out.add(new ArtStore.Work("cma:" + a.get("id"), image, title,
-                        credit(artist, ArtStore.string(a, "creation_date")),
-                        fact.length() > 0 ? ArtStore.firstSentence(fact) : ArtStore.firstSentence(about), null));
+                        credit(artist, ArtStore.string(a, "creation_date")), caption, null));
             }
             return out;
         }
@@ -198,22 +219,20 @@ final class ArtSources {
                 List<String> depicts = new ArrayList<String>();
                 String d = value(r, "depicts");
                 if (d != null) depicts.addAll(Arrays.asList(d.split("\\|")));
-                if (ArtStore.violent(title, depicts)) continue;
                 String article = value(r, "article");
+                if (article == null || ArtStore.violent(title, depicts)) continue;
                 out.add(new ArtStore.Work("wd:" + item.substring(item.lastIndexOf('/') + 1),
                         image.replace("http://", "https://") + "?width=1920", title,
                         credit(value(r, "creator"), value(r, "year")), null,
-                        article == null ? null : article.substring(article.lastIndexOf('/') + 1)));
+                        article.substring(article.lastIndexOf('/') + 1)));
             }
             return out;
         }
 
         /** The caption comes from the article's summary, which is checked against the filter as a whole. */
         public ArtStore.Work resolve(ArtStore.Work w) throws Exception {
-            if (w.extra.length() == 0) return w;
-            String extract = ArtStore.string(new JSONObject(ArtStore.fetch(
-                    "https://en.wikipedia.org/api/rest_v1/page/summary/" + w.extra, null, null, 20000)), "extract");
-            if (ArtStore.violent(extract, null)) return null;
+            String extract = summary(w.extra);
+            if (extract == null || ArtStore.violent(extract, null)) return null;
             return new ArtStore.Work(w.id, w.image, w.title, w.artist, ArtStore.informativeSentence(extract), w.extra);
         }
 
@@ -224,6 +243,14 @@ final class ArtSources {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /** The summary paragraph of an English Wikipedia article (its title as in the URL), or null. */
+    private static String summary(String article) throws Exception {
+        if (article == null || article.length() == 0) return null;
+        String extract = ArtStore.string(new JSONObject(ArtStore.fetch(
+                "https://en.wikipedia.org/api/rest_v1/page/summary/" + article, null, null, 20000)), "extract");
+        return extract == null || extract.trim().length() == 0 ? null : extract;
+    }
 
     private static JSONObject term(String field, Object value) throws Exception {
         return new JSONObject().put("term", new JSONObject().put(field, value));

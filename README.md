@@ -1,6 +1,6 @@
 # Frame
 
-A home screen for Fire TV with two apps on it, Stremio and SmartTube, as plain text over one of your own
+A home screen for Fire TV with two apps on it, Stremio and SmartTube, as plain one-color icons over one of your own
 photos or a famous painting, and a screensaver that mixes your Immich library with paintings, like an art
 mode. 54 KB, no libraries. It talks to your Immich server, four open art collections (the Art Institute of
 Chicago, the Met, the Cleveland Museum of Art, and Wikidata/Wikipedia/Commons), and Open-Meteo (for the
@@ -93,14 +93,19 @@ Open this folder in Claude Code on a computer on the same network as the TV and 
 ## Change things
 
 - **Apps:** `res/values/apps.xml`. Each entry can list several package names separated by `|`; the
-  first one installed is used. Run `adb shell pm list packages` to find names.
+  first one installed is used. Run `adb shell pm list packages` to find names. `app_icons` picks a
+  one-color icon for each (`stremio`, `youtube`; drawn in `AppGlyph.java`), or leave it empty for the
+  label as text.
 - **Art:** on by default. `./install.sh art off` turns it off (the screensaver then works as described in
   [Fallback](#fallback)); `art on` turns it back on and saves some paintings at once. About 860 notable
   public-domain paintings: the highlighted paintings of the Art Institute of Chicago, the Met and the
   Cleveland Museum of Art, and the paintings made before 1930 with articles in at least 20 Wikipedias
-  (Mona Lisa, The Starry Night, Girl with a Pearl Earring...), captioned from Wikipedia. Works are saved
-  in turn from each source and shrunk on the TV to 1920 x 1080; 60 stay, and four new ones rotate in each
-  day. Violent scenes (battles, executions, crucifixions, martyrdoms, dead bodies, weapons drawn) and
+  (Mona Lisa, The Starry Night, Girl with a Pearl Earring...). Every work has a one-sentence caption, from
+  the museum or from its English Wikipedia article (the Met's come from Wikipedia, through each record's
+  Wikidata link); works with none are skipped. The caption shows in the screensaver and, under the title
+  and artist, on the home screen. The lists are fetched again weekly. Works are saved in turn from each
+  source and shrunk on the TV to 1920 x 1080; 60 stay, and four new ones rotate in each day, replacing
+  the ones shown least recently. Violent scenes (battles, executions, crucifixions, martyrdoms, dead bodies, weapons drawn) and
   sexually explicit works are left out, by the collections' subject tags and words in the title,
   caption and Wikipedia summary. The sources are in `ArtSources.java`, the filter in `ArtStore.java`.
 - **Weather:** `./install.sh weather 10001` (a US ZIP code; add `celsius` for °C), `weather off` to hide it.

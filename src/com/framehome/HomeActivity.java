@@ -33,9 +33,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * The home screen: the apps from res/values/apps.xml as large text in the lower left, over one of
- * the screensaver's saved photos or paintings, dimmed (a painting's title and artist are in the
- * lower right). The time and the weather are in the upper right. Up/Down moves, OK opens. The Menu key shows a second
+ * The home screen: the apps from res/values/apps.xml as large icons or text in the lower left, over one of
+ * the screensaver's saved photos or paintings, dimmed (a painting's title, artist and caption are
+ * in the lower right). The time and the weather are in the upper right. Up/Down moves, OK opens. The Menu key shows a second
  * row with Fire TV settings, a screensaver preview, and the screensaver's sync status.
  */
 public class HomeActivity extends Activity {
@@ -117,6 +117,7 @@ public class HomeActivity extends Activity {
         credit = text(12, "sans-serif", Typeface.NORMAL);
         credit.setAlpha(0.5f);
         credit.setMaxWidth(dp(420));
+        credit.setLineSpacing(0, 1.2f);
         credit.setGravity(Gravity.END);
         root.addView(credit, corner(Gravity.BOTTOM | Gravity.END));
 
@@ -126,9 +127,20 @@ public class HomeActivity extends Activity {
 
         String[] labels = getResources().getStringArray(R.array.app_labels);
         String[] packages = getResources().getStringArray(R.array.app_packages);
+        String[] icons = getResources().getStringArray(R.array.app_icons);
         for (int i = 0; i < Math.min(labels.length, packages.length); i++) {
             final Slot slot = new Slot(labels[i], packages[i]);
-            slot.view = item(slot.label, 44, "sans-serif-light");
+            AppGlyph glyph = i < icons.length ? AppGlyph.forName(icons[i].trim(), PAPER) : null;
+            if (glyph == null) {
+                slot.view = item(slot.label, 44, "sans-serif-light");
+            } else {
+                // The icon takes the text's place; it dims and brightens with focus the same way.
+                slot.view = item("", 44, "sans-serif-light");
+                slot.view.setContentDescription(slot.label);
+                glyph.setBounds(0, 0, dp(60), dp(60));
+                slot.view.setCompoundDrawables(glyph, null, null, null);
+                slot.view.setPadding(0, dp(8), dp(12), dp(8));
+            }
             slot.view.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -320,7 +332,8 @@ public class HomeActivity extends Activity {
                 PhotoStore.Shown shown = null;
                 if (art.savedCount() > 0 && (store.savedCount() == 0 || random.nextBoolean())) shown = art.next(w, h);
                 final Bitmap b = shown != null ? shown.bitmap : store.randomSaved(w, h);
-                final String by = shown == null ? "" : shown.title + (shown.artist.length() > 0 ? "\n" + shown.artist : "");
+                final String by = shown == null ? "" : shown.title + (shown.artist.length() > 0 ? "\n" + shown.artist : "")
+                        + (shown.caption.length() > 0 ? "\n" + shown.caption : "");
                 // Paintings sit whole on the right, clear of the menu; photos fill the screen.
                 final boolean whole = shown != null && b != null && b.getWidth() * 9 < b.getHeight() * 16;
                 main.post(new Runnable() {
