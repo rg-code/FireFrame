@@ -103,7 +103,7 @@ Open this folder in Claude Code on a computer on the same network as the TV and 
   day. Violent scenes (battles, executions, crucifixions, martyrdoms, dead bodies, weapons drawn) and
   sexually explicit works are left out, by the collections' subject tags and words in the title,
   caption and Wikipedia summary. The sources are in `ArtSources.java`, the filter in `ArtStore.java`.
-- **Weather:** `./install.sh weather 94555` (a US ZIP code; add `celsius` for °C), `weather off` to hide it.
+- **Weather:** `./install.sh weather 10001` (a US ZIP code; add `celsius` for °C), `weather off` to hide it.
   The ZIP is looked up on the computer; the TV only stores the coordinates and asks Open-Meteo for the
   current temperature every 20 minutes at most.
 - **Background before Immich:** `./install.sh import backgrounds` uses the `.jpg`/`.png` files in
