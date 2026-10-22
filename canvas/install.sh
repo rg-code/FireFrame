@@ -11,7 +11,7 @@
 #   TV_HOST=... ./install.sh art on|off|sync         paintings in the photo collection (off deletes them)
 #   TV_HOST=... ./install.sh upload ADDRESS          with Art Mode's "add from phone" screen open: sends the
 #                                                    paintings not sent yet to its photo collection. ADDRESS
-#                                                    is the QR code's, like http://192.168.1.60:19637/772335
+#                                                    is the QR code's, like http://192.168.1.60:18080/123456
 #   TV_HOST=... ./install.sh mat '#E8E3D9'|off       the mat around each painting (redoes the saved ones)
 #   TV_HOST=... ./install.sh schedule 18:00-20:00|off  Art Mode in the evening when someone is home
 #   TV_HOST=... ./install.sh key DPAD_DOWN           the remote key that moves focus onto the icons

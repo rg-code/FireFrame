@@ -54,11 +54,11 @@ name. It decides when the icons show and what the evening schedule opens.
 Art Mode keeps its photo collection (Photo Collections > My Photos) in its own private storage,
 `/data/data/com.vt.arttv.artmode/photos`, which no other app can write to. The way in is the one
 your phone uses: Art Mode's **add from phone** screen (Photo Collections > My Photos > +) runs a small
-web page on the TV, and its QR code holds the address, like `http://192.168.1.60:19637/772335`. The
+web page on the TV, and its QR code holds the address, like `http://192.168.1.60:18080/123456`. The
 number at the end changes each time the screen opens. While it's open:
 
 ```bash
-./install.sh upload http://192.168.1.60:19637/772335
+./install.sh upload http://192.168.1.60:18080/123456
 ```
 
 That sends every painting Canvas has saved and hasn't sent yet, the way the phone page does, and
