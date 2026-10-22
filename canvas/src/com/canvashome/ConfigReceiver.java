@@ -16,8 +16,7 @@ import android.util.Log;
  *       [--es photo_dir /sdcard/DIR]       the folder Art Mode's photo collection reads
  *       [--es art on|off] [--ez sync true] paintings in that folder; sync saves some now
  *       [--es mat off|#RRGGBB]             the mat around each painting (existing ones are redone)
- *       [--es schedule 18:00-20:00|off] [--ei away 10] [--ei retry 30]
- *       [--es sensor auto|off|NAME] [--ez sensors true]
+ *       [--es schedule 18:00-20:00|off]
  *       [--es key DPAD_DOWN]               the key that moves focus onto the icons
  *       [--ez start true] [--ez sleep true] [--ez tick true]   try Art Mode on, off, or a schedule check
  *       [--ez unadmin true]                gives up the device admin, so the app can be uninstalled
@@ -62,13 +61,9 @@ public class ConfigReceiver extends BroadcastReceiver {
                 int start = p.length == 2 ? Config.parseMinute(p[0]) : -1;
                 int end = p.length == 2 ? Config.parseMinute(p[1]) : -1;
                 if (start < 0 || end < 0 || start == end) error += "Schedule should look like 18:00-20:00. ";
-                else e.putInt("start", start).putInt("end", end).putString("done", "");
+                else e.putInt("start", start).putInt("end", end).putString("woke", "");
             }
         }
-        if (intent.hasExtra("away")) e.putInt("away", Math.max(1, intent.getIntExtra("away", 10)));
-        if (intent.hasExtra("retry")) e.putInt("retry", Math.max(5, intent.getIntExtra("retry", 30)));
-        String sensor = intent.getStringExtra("sensor");
-        if (sensor != null) e.putString("sensor", sensor.trim());
         e.commit();
 
         String artMode = intent.getStringExtra("art");
@@ -90,7 +85,6 @@ public class ConfigReceiver extends BroadcastReceiver {
         }
 
         final boolean sync = intent.getBooleanExtra("sync", false) || redo || "on".equals(artMode);
-        final boolean sensors = intent.getBooleanExtra("sensors", false);
         final String prefix = error;
         final PendingResult result = goAsync();
         new Thread("canvas-config") {
@@ -102,7 +96,7 @@ public class ConfigReceiver extends BroadcastReceiver {
                     int saved = art.refresh(12, 40_000);
                     message += "Saved " + saved + " paintings now. ";
                 }
-                message += Status.describe(app, sensors);
+                message += Status.describe(app);
                 Log.i(Config.TAG, message.replace('\n', ' '));
                 result.setResultData(message);
                 result.finish();

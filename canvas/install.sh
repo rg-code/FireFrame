@@ -9,12 +9,11 @@
 #                                                    phone app: shows where it landed
 #   TV_HOST=... ./install.sh photos DIR              put the paintings in DIR (moves them from the old one)
 #   TV_HOST=... ./install.sh art on|off|sync         paintings in the photo collection (off deletes them)
+#   TV_HOST=... ./install.sh upload ADDRESS          with Art Mode's "add from phone" screen open: sends the
+#                                                    paintings not sent yet to its photo collection. ADDRESS
+#                                                    is the QR code's, like http://192.168.1.60:19637/772335
 #   TV_HOST=... ./install.sh mat '#E8E3D9'|off       the mat around each painting (redoes the saved ones)
 #   TV_HOST=... ./install.sh schedule 18:00-20:00|off  Art Mode in the evening when someone is home
-#   TV_HOST=... ./install.sh away MIN                minutes with nobody seen before Art Mode turns off (10)
-#   TV_HOST=... ./install.sh retry MIN               then minutes before it looks again (30)
-#   TV_HOST=... ./install.sh sensors                 the TV's sensors; which one counts as presence
-#   TV_HOST=... ./install.sh sensor auto|off|NAME    pick the presence sensor
 #   TV_HOST=... ./install.sh key DPAD_DOWN           the remote key that moves focus onto the icons
 #   TV_HOST=... ./install.sh start|sleep|tick        try it now: Art Mode on, off, or one schedule check
 #   TV_HOST=... ./install.sh status                  what's set, and the last log lines
@@ -118,15 +117,15 @@ learn)
     | sort -u | sed 's/^/  /' | head -30
   tv "ls -d /sdcard/Android/data/$pkg/* /sdcard/Android/data/$pkg/files/* 2>/dev/null" | sed 's/^/  /' | head -20
   echo
-  echo "To be sure: add one photo to Art Mode's photo collection from the phone app, then ./install.sh findphotos"
+  echo "To add the paintings: open Art Mode's add-from-phone screen, then ./install.sh upload <the QR code's address>"
   ;;
 findphotos)
   connect
   echo "Pictures saved on the TV in the last 30 minutes:"
-  found="$(tv "find /sdcard /storage -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.heic' \\) -mmin -30 2>/dev/null" | grep -v '/canvas-' | sort -u)"
+  found="$(tv "find /sdcard /storage -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.heic' \\) -mmin -30 2>/dev/null" | { grep -v '/canvas-' || true; } | sort -u)"
   if [ -z "$found" ]; then
-    echo "  none in shared storage. Art Mode may keep its photos in its private storage, which other apps"
-    echo "  can't write to. A USB stick is the other way in: see README.md, Photo collection."
+    echo "  none in shared storage: Art Mode keeps its photos in its private storage, which other apps"
+    echo "  can't write to. Use ./install.sh upload instead (README.md, Photo collection)."
   else
     printf '%s\n' "$found" | sed 's/^/  /'
     dir="$(dirname "$(printf '%s\n' "$found" | head -1)")"
@@ -135,6 +134,35 @@ findphotos)
   ;;
 photos)
   connect; echo "$(broadcast --es photo_dir "$(q "${2:?usage: $0 photos /sdcard/FOLDER}")")" ;;
+upload)
+  # Art Mode keeps its photo collection in private storage. Its "add from phone" screen runs a web
+  # page that takes uploads (start, then one file per POST), and this posts to it like a phone does.
+  base="${2:?usage: $0 upload http://TV:PORT/CODE (the address in the QR code of the add-from-phone screen)}"
+  base="${base%/}/"; [[ "$base" == http* ]] || base="http://$base"
+  command -v curl >/dev/null || { echo "curl not found."; exit 1; }
+  connect
+  dir="$(broadcast | sed -n 's/.* Folder: \(.*\)\.$/\1/p' | head -1)"
+  [ -n "$dir" ] || { echo "Couldn't read Canvas's folder from its status."; exit 1; }
+  sent="$dir/.uploaded"
+  todo="$(tv "cd $(q "$dir") && for f in canvas-*.jpg; do [ -f \"\$f\" ] && ! grep -qx \"\$f\" .uploaded 2>/dev/null && echo \"\$f\"; done")"
+  [ -n "$todo" ] || { echo "Every saved painting is already in Art Mode's photo collection."; exit 0; }
+  n="$(printf '%s\n' "$todo" | wc -l | tr -d ' ')"
+  curl -sf -m 20 -F "fileCount=$n" "${base}start" >/dev/null \
+    || { echo "Art Mode's upload page didn't answer at $base. Open the add-from-phone screen and use its address."; exit 1; }
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  ok=0
+  # adb reads stdin, so the list comes in on fd 3.
+  while IFS= read -r f <&3; do
+    adb -s "$SERIAL" pull "$dir/$f" "$tmp/$f" >/dev/null 2>&1 </dev/null
+    if [ "$(curl -s -m 90 -F "data=@$tmp/$f;type=image/jpeg" "${base}upload")" = "success." ]; then
+      tv "echo $(q "$f") >> $(q "$sent")" </dev/null; ok=$((ok + 1)); echo "  sent $f"
+    else
+      echo "  Art Mode refused $f"
+    fi
+    rm -f "$tmp/$f"
+  done 3<<< "$todo"
+  echo "$ok of $n paintings added to Art Mode's photo collection (My Photos)."
+  ;;
 art)
   connect
   case "${2:?on, off or sync}" in
@@ -145,19 +173,6 @@ mat)
   connect; echo "$(broadcast --es mat "$(q "${2:?a color like '#E8E3D9', or off}")")" ;;
 schedule)
   connect; echo "$(broadcast --es schedule "$(q "${2:?like 18:00-20:00, or off}")")" ;;
-away)
-  connect; echo "$(broadcast --ei away "${2:?minutes}")" ;;
-retry)
-  connect; echo "$(broadcast --ei retry "${2:?minutes}")" ;;
-sensors)
-  connect
-  echo "$(broadcast --ez sensors true)"
-  echo
-  echo "What Android itself lists (dumpsys sensorservice):"
-  tv dumpsys sensorservice | sed -n '/Sensor List:/,/^$/p' | head -40
-  ;;
-sensor)
-  connect; echo "$(broadcast --es sensor "$(q "${2:?auto, off or a name from ./install.sh sensors}")")" ;;
 key)
   connect; echo "$(broadcast --es key "$(q "${2:?a key name like DPAD_DOWN, DPAD_UP, MENU or INFO}")")" ;;
 start)

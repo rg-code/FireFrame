@@ -34,7 +34,7 @@ public class StatusActivity extends Activity {
         new Thread("canvas-status") {
             @Override
             public void run() {
-                final String s = Status.describe(StatusActivity.this, false);
+                final String s = Status.describe(StatusActivity.this);
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {

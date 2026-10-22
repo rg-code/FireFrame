@@ -17,23 +17,20 @@ import java.util.Locale;
 /**
  * Art Mode in the evening (18:00 to 20:00 by default), for when someone is home.
  *
- * At the start of the evening, if the TV is off, it is turned on into Art Mode. If the presence
- * sensor sees nobody for {@link Config#awayMinutes} minutes, Art Mode is turned off again and tried
- * once more {@link Config#retryMinutes} later, and so on until the evening ends; then Art Mode is
- * turned off. Hisense's sensor may only work while Art Mode shows, which is why it has to be on for a
- * few minutes to find out whether anyone is there. Without a usable sensor, Art Mode stays on for the
- * whole evening.
+ * At the start of the evening, if the TV is off, it is turned on into Art Mode, once. Whether anyone
+ * is home is left to Hisense: the CanvasTV's radar is only readable by Hisense's own apps (SELinux
+ * keeps sideloaded apps away from its service), and Art Mode's own "Motion detector" setting already
+ * blanks the screen when the room is empty and brings it back when someone walks in. At the end of
+ * the evening, Art Mode is turned off.
  *
- * It never takes over the TV while it's in use (another app on screen), and once someone turns
- * the TV off themselves during the evening, it leaves the TV alone until the next one.
+ * It never takes over the TV while it's in use (another app on screen), and never turns it on a
+ * second time in the same evening, so a TV turned off with the remote stays off.
  *
  * Runs on an exact alarm: once a minute during the evening, else at the next start. Also receives
  * BOOT_COMPLETED to set the alarm again after a restart.
  */
 public class Schedule extends BroadcastReceiver {
     private static final String TICK = "com.canvashome.TICK";
-    // A screen-off this soon after we asked for one was ours.
-    private static final long OURS_MS = 15_000;
 
     @Override
     public void onReceive(Context c, Intent intent) {
@@ -78,7 +75,6 @@ public class Schedule extends BroadcastReceiver {
     static synchronized void tick(Context c) {
         SharedPreferences p = Config.prefs(c);
         Calendar cal = Calendar.getInstance();
-        long now = cal.getTimeInMillis();
         Overlay o = Overlay.get();
         boolean art = o != null && o.artShowing();
         if (o != null) o.update();
@@ -91,43 +87,26 @@ public class Schedule extends BroadcastReceiver {
             return;
         }
         String day = evening(c, cal);
-        if (day.equals(p.getString("done", ""))) return;
         if (!day.equals(p.getString("evening", ""))) {
-            p.edit().putString("evening", day).putLong("probe_at", 0).apply();
+            p.edit().putString("evening", day).apply();
             Log.i(Config.TAG, "evening starts");
         }
+        if (day.equals(p.getString("woke", ""))) return;
         if (o == null) {
             Log.w(Config.TAG, "the overlay service is off, so Art Mode can't be started");
             return;
         }
+        p.edit().putString("woke", day).apply();
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
-        if (!pm.isInteractive()) {
-            if (now >= p.getLong("probe_at", 0)) {
-                p.edit().putLong("probe_at", now + Config.retryMinutes(c) * 60_000L).apply();
-                wake(c, "the evening started or it's time to look again");
-            }
-            return;
-        }
-        if (art && Presence.available(c)) {
-            long since = Math.max(Presence.seenAt(c), o.artSince());
-            if (now - since >= Config.awayMinutes(c) * 60_000L) {
-                p.edit().putLong("probe_at", now + Config.retryMinutes(c) * 60_000L).apply();
-                sleep(c, "nobody seen for " + Config.awayMinutes(c) + " min");
-            }
-        }
-        // Another app on screen: someone is using the TV, so leave it be.
+        if (!pm.isInteractive()) wake(c, "the evening started");
+        // Else the TV is already on (Art Mode, or someone using it), so leave it be.
     }
 
-    /** From {@link Overlay}: a screen-off we didn't ask for ends the evening's schedule. */
+    /** From {@link Overlay}: logged, to tell Hisense's motion blanking from the remote in logcat. */
     static void screenChanged(Context c, boolean on) {
-        if (on) return;
-        SharedPreferences p = Config.prefs(c);
-        String day = p.getString("evening", "");
-        if (day.length() == 0 || !Config.inWindow(c, Calendar.getInstance())) return;
-        if (System.currentTimeMillis() - p.getLong("slept_at", 0) > OURS_MS) {
-            p.edit().putString("done", day).apply();
-            Log.i(Config.TAG, "the TV was turned off with the remote; the schedule rests until tomorrow");
-        }
+        if (Config.prefs(c).getString("evening", "").length() == 0) return;
+        Log.i(Config.TAG, "screen " + (on ? "on" : "off") + " during the evening; top: "
+                + (Overlay.get() == null ? "?" : Overlay.get().topPackage()));
     }
 
     /** Turns the screen on and opens Art Mode. */
@@ -164,7 +143,6 @@ public class Schedule extends BroadcastReceiver {
      */
     static void sleep(Context c, String why) {
         Log.i(Config.TAG, "turning Art Mode off: " + why);
-        Config.prefs(c).edit().putLong("slept_at", System.currentTimeMillis()).apply();
         DevicePolicyManager dpm = (DevicePolicyManager) c.getSystemService(Context.DEVICE_POLICY_SERVICE);
         if (dpm.isAdminActive(new ComponentName(c, Admin.class))) {
             dpm.lockNow();
@@ -179,10 +157,10 @@ public class Schedule extends BroadcastReceiver {
         if (start < 0) return "Schedule: off.";
         SharedPreferences p = Config.prefs(c);
         StringBuilder b = new StringBuilder("Schedule: Art Mode from ").append(Config.hhmm(start)).append(" to ")
-                .append(Config.hhmm(Config.endMinute(c))).append(", off after ").append(Config.awayMinutes(c))
-                .append(" min with nobody seen, looks again ").append(Config.retryMinutes(c)).append(" min later.");
-        if (evening(c, Calendar.getInstance()).equals(p.getString("done", "")) && Config.inWindow(c, Calendar.getInstance())) {
-            b.append(" Resting this evening (the TV was turned off with the remote).");
+                .append(Config.hhmm(Config.endMinute(c)))
+                .append("; whether anyone is home is left to Art Mode's Motion detector setting.");
+        if (Config.inWindow(c, Calendar.getInstance()) && evening(c, Calendar.getInstance()).equals(p.getString("woke", ""))) {
+            b.append(" Already turned on this evening.");
         }
         long next = p.getLong("next_at", 0);
         if (next > 0) b.append(String.format(Locale.US, " Next check %tR.", next));

@@ -74,21 +74,6 @@ final class Config {
         return prefs(c).getInt("end", 20 * 60);
     }
 
-    /** With no presence seen for this many minutes, Art Mode is turned off. */
-    static int awayMinutes(Context c) {
-        return prefs(c).getInt("away", 10);
-    }
-
-    /** After turning Art Mode off for an empty room, how long until it looks again. */
-    static int retryMinutes(Context c) {
-        return prefs(c).getInt("retry", 30);
-    }
-
-    /** "auto" (the first motion or proximity sensor found), "off", or a sensor's exact name. */
-    static String sensor(Context c) {
-        return prefs(c).getString("sensor", "auto");
-    }
-
     static boolean inWindow(Context c, Calendar now) {
         int start = startMinute(c), end = endMinute(c);
         if (start < 0) return false;

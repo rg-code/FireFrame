@@ -10,7 +10,7 @@ final class Status {
     private Status() {
     }
 
-    static String describe(Context c, boolean sensors) {
+    static String describe(Context c) {
         StringBuilder b = new StringBuilder();
         b.append(Overlay.describe(c)).append('\n');
         ComponentName art = Config.artComponent(c);
@@ -20,7 +20,7 @@ final class Status {
         File dir = Config.photoDir(c);
         b.append(store.status()).append(" Folder: ").append(dir.getPath()).append('.');
         if (store.enabled() && !writable(dir)) b.append(" Can't write there: run ./install.sh again (it grants storage).");
-        b.append('\n').append(Schedule.describe(c)).append('\n').append(Presence.describe(c, sensors));
+        b.append('\n').append(Schedule.describe(c));
         return b.toString();
     }
 

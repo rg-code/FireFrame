@@ -24,7 +24,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
-import java.util.Calendar;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -32,14 +32,14 @@ import java.util.List;
  * kind of sideloaded app that can see which app is on screen, draw over it
  * (TYPE_ACCESSIBILITY_OVERLAY, no extra permission) and see remote presses before Art Mode does.
  *
- * The icons show in the lower right whenever Art Mode is the app on screen. Art Mode keeps the
+ * The icons show in the lower right whenever Art Mode is on screen showing a picture, and hide while
+ * one of its menus or galleries is open (they use Down themselves). Art Mode keeps the
  * remote: only the focus key (Down by default) is taken, and moves focus onto the icons; then
  * Left/Right choose, OK opens, and Back, Up or a few idle seconds give the remote back. Every other
  * key goes to Art Mode as usual.
  *
- * It also listens to the presence sensor while Art Mode shows or the evening schedule runs, and is
- * what lets {@link Schedule} start activities from the background (Android lets an app with an
- * accessibility service on do that).
+ * It is also what lets {@link Schedule} start activities from the background (Android lets an app
+ * with an accessibility service on do that).
  */
 public class Overlay extends AccessibilityService {
     // Sizes in dp at the TV's UI density, colors ARGB.
@@ -48,11 +48,17 @@ public class Overlay extends AccessibilityService {
     private static final int PAD_DP = 14;
     private static final int RIGHT_DP = 56;
     private static final int BOTTOM_DP = 40;
-    private static final int PILL = 0x59000000;
+    // Fainter than Frame's home screen (0.42): over a painting they should barely be there.
+    private static final int PILL = 0x33000000;
     private static final int ICON = 0xFFF2F2F0;
-    private static final float IDLE_ALPHA = 0.62f;
-    private static final float DIM_ALPHA = 0.38f;
+    private static final float IDLE_ALPHA = 0.26f;
+    private static final float DIM_ALPHA = 0.20f;
+    private static final float SELECTED_ALPHA = 0.9f;
     private static final long FOCUS_TIMEOUT_MS = 8000;
+    // Art Mode showing a picture has nothing focusable but this; its menus and galleries do.
+    private static final String PICTURE_VIEW = ":id/hi_video_surface_view";
+    // Art Mode's menus close on their own without an event, so while one is open, look again this often.
+    private static final long MENU_CHECK_MS = 1000;
 
     private static volatile Overlay instance;
 
@@ -68,10 +74,16 @@ public class Overlay extends AccessibilityService {
     private String[] labels;
     private String[][] packages;
     private volatile boolean shown;
+    private volatile boolean artOn;
     private boolean focused;
     private int selected;
-    private volatile long artSince;
-    private Presence presence;
+
+    private final Runnable recheck = new Runnable() {
+        @Override
+        public void run() {
+            update();
+        }
+    };
 
     private final Runnable unfocus = new Runnable() {
         @Override
@@ -92,7 +104,6 @@ public class Overlay extends AccessibilityService {
     protected void onServiceConnected() {
         instance = this;
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        presence = new Presence(this);
         labels = getResources().getStringArray(R.array.app_labels);
         String[] pk = getResources().getStringArray(R.array.app_packages);
         String[] glyphs = getResources().getStringArray(R.array.app_icons);
@@ -116,32 +127,32 @@ public class Overlay extends AccessibilityService {
         } catch (IllegalArgumentException ignored) {
             // never registered
         }
+        main.removeCallbacks(recheck);
         show(false);
-        presence.listen(false);
         return super.onUnbind(intent);
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         int t = event.getEventType();
-        if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || t == AccessibilityEvent.TYPE_WINDOWS_CHANGED) update();
+        if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || t == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            update();
+        } else if (shown != (artOn && !browsing())) {
+            // A menu opened or closed inside Art Mode.
+            update();
+        }
     }
 
     @Override
     public void onInterrupt() {
     }
 
-    /** True while Art Mode is the app on screen and the screen is on. */
+    /** True while Art Mode is the app on screen and the screen is on, menus open or not. */
     boolean artShowing() {
-        return shown;
+        return artOn;
     }
 
-    /** When Art Mode last came on screen, in wall-clock ms. */
-    long artSince() {
-        return artSince;
-    }
-
-    /** Shows or hides the icons for whatever is on screen now, and starts or stops the sensor. */
+    /** Shows or hides the icons for whatever is on screen now. */
     void update() {
         main.post(new Runnable() {
             @Override
@@ -149,11 +160,41 @@ public class Overlay extends AccessibilityService {
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                 String art = Config.artPackage(Overlay.this);
                 String top = topPackage();
-                boolean on = pm.isInteractive() && art.length() > 0 && art.equals(top);
-                show(on);
-                presence.listen(pm.isInteractive() && (on || Config.inWindow(Overlay.this, Calendar.getInstance())));
+                artOn = pm.isInteractive() && art.length() > 0 && art.equals(top);
+                boolean menu = artOn && browsing();
+                show(artOn && !menu);
+                main.removeCallbacks(recheck);
+                if (menu) main.postDelayed(recheck, MENU_CHECK_MS);
             }
         });
+    }
+
+    /**
+     * True while one of Art Mode's menus or galleries is open: something other than the picture
+     * itself can take focus.
+     */
+    private boolean browsing() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        List<AccessibilityNodeInfo> todo = new ArrayList<AccessibilityNodeInfo>();
+        todo.add(root);
+        boolean found = false;
+        while (!todo.isEmpty()) {
+            AccessibilityNodeInfo n = todo.remove(todo.size() - 1);
+            if (!found && n.isFocusable() && n.isVisibleToUser()) {
+                String id = n.getViewIdResourceName();
+                found = id == null || !id.endsWith(PICTURE_VIEW);
+            }
+            if (!found) {
+                for (int i = 0; i < n.getChildCount(); i++) {
+                    AccessibilityNodeInfo child = n.getChild(i);
+                    if (child != null) todo.add(child);
+                }
+            }
+            n.recycle();
+        }
+        for (AccessibilityNodeInfo n : todo) n.recycle();
+        return found;
     }
 
     /** The package of the focused app window. Our own overlay isn't an app window, so it never counts. */
@@ -205,7 +246,6 @@ public class Overlay extends AccessibilityService {
         if (on == shown) return;
         shown = on;
         if (on) {
-            artSince = System.currentTimeMillis();
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -237,7 +277,7 @@ public class Overlay extends AccessibilityService {
     private void paint() {
         for (int i = 0; i < icons.length; i++) {
             boolean sel = focused && i == selected;
-            icons[i].setAlpha(!focused ? IDLE_ALPHA : sel ? 1f : DIM_ALPHA);
+            icons[i].setAlpha(!focused ? IDLE_ALPHA : sel ? SELECTED_ALPHA : DIM_ALPHA);
             icons[i].setScaleX(sel ? 1.18f : 1f);
             icons[i].setScaleY(sel ? 1.18f : 1f);
         }
@@ -252,6 +292,11 @@ public class Overlay extends AccessibilityService {
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (!focused) {
             if (code != Config.focusKey(this)) return false;
+            if (browsing()) {
+                // A menu opened since the last update: the key is Art Mode's.
+                update();
+                return false;
+            }
             if (down && e.getRepeatCount() == 0) {
                 main.post(new Runnable() {
                     @Override

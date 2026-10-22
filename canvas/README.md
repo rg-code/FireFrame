@@ -3,21 +3,28 @@
 Frame's idea for a Hisense CanvasTV with Google TV. Canvas doesn't replace Art Mode, it adds three
 things to it:
 
+![Canvas's icons over a painting it added to Art Mode](screenshot.jpg)
+
+*Brueghel's Children's Games (1560), one of Canvas's paintings in Art Mode, with the two icons in
+the lower right. A composite: Art Mode draws its picture on a video layer that screenshots can't
+capture, so this is the uploaded painting file under the icon overlay from a real screenshot.*
+
 - **Two small icons over Art Mode.** Stremio and SmartTube sit in the lower right corner as one-color
-  icons on a faint dark pill, whenever Art Mode is on screen. Art Mode keeps the remote. Only **Down**
-  is taken: it moves focus onto the icons. Then **Left/Right** choose, **OK** opens, and **Back**, **Up**
-  or 8 idle seconds give the remote back. Any other key goes to Art Mode as usual.
+  icons, fainter than Frame's, on a faint dark pill, whenever Art Mode is showing a picture. They
+  hide while one of Art Mode's menus or galleries is open, so Down works there as usual. Art Mode
+  keeps the remote. Over a picture only **Down** is taken: it moves focus onto the icons. Then
+  **Left/Right** choose, **OK** opens, and **Back**, **Up** or 8 idle seconds give the remote back. Any
+  other key goes to Art Mode as usual.
 - **Public-domain paintings in Art Mode's photo collection.** These are the same ~860 notable paintings as
   Frame's (Art Institute of Chicago, the Met, Cleveland Museum of Art, Wikidata/Wikipedia), with the
   same filter for violent and explicit works. Each is saved as a 3840 x 2160 JPEG with the painting
   whole on a plain mat and a small label (title, artist) under it, so Art Mode can't crop a tall
-  painting. 60 stay, and four new ones rotate in each day. Canvas only touches its own files
-  (`canvas-*.jpg`). Your own photos in the collection are left alone.
-- **Art Mode in the evening, when someone is home.** From 18:00 to 20:00 the TV turns on into Art Mode.
-  If the TV's presence (motion) sensor sees nobody for 10 minutes, Art Mode turns off again, and it
-  looks again 30 minutes later. At 20:00 Art Mode turns off. It never interrupts the TV while it's in
-  use (another app on screen). If you turn the TV off with the remote during the evening, it rests
-  until the next evening.
+  painting. Canvas keeps 60 on the TV, four new ones a day, and `./install.sh upload` adds the new
+  ones to Art Mode's collection through its add-from-phone page. Your own photos are left alone.
+- **Art Mode in the evening.** At 18:00 the TV turns on into Art Mode, and at 20:00 Art Mode turns
+  off. In between, Hisense's own **Motion detector** (Art Mode settings) blanks the screen when the
+  room is empty and brings it back when someone walks in. It never interrupts the TV while it's in
+  use (another app on screen), and turns it on only once an evening, so a TV you turn off stays off.
 
 No libraries. The only servers it talks to are the four art collections.
 
@@ -35,8 +42,7 @@ export TV_HOST=192.168.1.60
 ./install.sh            # installs; turns on the overlay service, the screen-off permission and storage
 # now open Art Mode on the TV (press the remote's power button, or open the Art Mode app), then:
 ./install.sh learn      # remembers Art Mode, lists its screens and folders that may hold its photos
-./install.sh findphotos # after adding one photo to Art Mode's collection from the phone app
-./install.sh photos /sdcard/<the folder findphotos showed>
+./install.sh upload http://<TV>:<port>/<code>   # with Art Mode's add-from-phone screen open
 ./install.sh status
 ```
 
@@ -45,19 +51,24 @@ name. It decides when the icons show and what the evening schedule opens.
 
 ## Photo collection
 
-Canvas needs the folder Art Mode reads its photo collection from. The surest way to find it: add one
-photo to the collection from Hisense's phone app, run `./install.sh findphotos` within 30 minutes, and
-it prints where the photo landed and the `photos` command to use. Until then, paintings go to
-`/sdcard/Pictures/Canvas Art`. Every new or deleted file is also reported to Android's media index,
-for galleries that read the index instead of the folder.
+Art Mode keeps its photo collection (Photo Collections > My Photos) in its own private storage,
+`/data/data/com.vt.arttv.artmode/photos`, which no other app can write to. The way in is the one
+your phone uses: Art Mode's **add from phone** screen (Photo Collections > My Photos > +) runs a small
+web page on the TV, and its QR code holds the address, like `http://192.168.1.60:19637/772335`. The
+number at the end changes each time the screen opens. While it's open:
 
-If `findphotos` finds nothing, Art Mode keeps its photos in its own private storage, and no other app
-can add to it there. Then the way in is a USB stick, if your Art Mode can show photos from USB. Copy
-the paintings off the TV (`adb pull /sdcard/Pictures/Canvas\ Art`) onto the stick.
+```bash
+./install.sh upload http://192.168.1.60:19637/772335
+```
+
+That sends every painting Canvas has saved and hasn't sent yet, the way the phone page does, and
+Art Mode shows "Import completed". Canvas keeps its paintings in `/sdcard/Pictures/Canvas Art` and
+remembers what it sent in `.uploaded` there, so running it again later only sends the new ones.
+Paintings in Art Mode stay until you delete them there, like your own photos.
 
 ```bash
 ./install.sh art sync        # save 12 more now (the background job saves the rest, every 3 hours)
-./install.sh art off         # delete Canvas's paintings and stop
+./install.sh art off         # delete Canvas's saved paintings (not the ones already in Art Mode)
 ./install.sh mat '#1E1D1B'   # a dark mat (the labels turn light); mat off saves the painting alone
 ```
 
@@ -65,24 +76,18 @@ the paintings off the TV (`adb pull /sdcard/Pictures/Canvas\ Art`) onto the stic
 
 ```bash
 ./install.sh schedule 18:00-20:00   # or off; a window past midnight (22:00-01:00) works too
-./install.sh away 10                # minutes with nobody seen before Art Mode turns off
-./install.sh retry 30               # then minutes before it turns on and looks again
-./install.sh sensors                # every sensor the TV reports, and which one Canvas uses
-./install.sh sensor 'NAME'          # pick one by its exact name; auto (default) or off
 ./install.sh start | sleep | tick   # try it now: Art Mode on, off, or one schedule check
 ```
 
-**The sensor.** The CanvasTV's motion sensor is Hisense hardware. Hisense says it only works in Art Mode,
-and it may not be visible to other apps at all. With `auto`, Canvas uses the TV's proximity sensor
-if there is one, or else a sensor whose name says motion, presence, PIR, human, body, occupancy or radar.
-A proximity sensor counts as someone there when it reads nearer than its range, any other sensor when
-it reads non-zero. Run `./install.sh sensors` once to see what's there. If nothing usable shows up,
-the schedule still runs, and Art Mode stays on for the whole evening. Hisense's own motion setting
-(Art Mode settings, "motion detection") can still turn the screen off when the room is empty. Canvas
-counts that as the TV being turned off and rests until the next evening.
-
-Because the sensor may only work during Art Mode, finding out whether anyone is home means turning Art
-Mode on for `away` minutes. That's why an empty house sees Art Mode for 10 minutes every 30.
+**The sensor.** The CanvasTV's presence sensor is a radar run by Hisense's own system service, not
+an Android sensor (Android lists no sensors at all on the 55S7N). Its service only answers
+Hisense's apps: the TV's SELinux rules refuse a sideloaded app (`avc: denied { find }` for
+`hal_systemmw_hwservice`). So Canvas doesn't read it. Turn on **Motion detector** in Art Mode's
+settings instead: Art Mode then blanks the screen when the room is empty and wakes it when someone
+comes in, and Canvas only decides when the evening starts and ends. Hisense's blank screen only turns
+the panel off: Android stays awake with Art Mode on screen. So at 20:00 Canvas still sees Art Mode and
+puts the TV into standby, even if the room was empty. Whether the motion detector can wake the TV
+from standby hasn't been tested yet.
 
 **Turning on and off.** To turn the TV on, Canvas uses a wake lock that turns the screen on and opens
 Art Mode. This works when the TV is in standby (Android asleep), which is how Google TV sets usually
@@ -110,10 +115,11 @@ power button. That needs the device admin `install.sh` turns on.
   turn it off in Settings > Accessibility, the icons and the schedule stop.
 - **Storage:** Canvas targets Android 10 (API 29) with legacy external storage, so it can write to a
   shared folder with the plain storage permission `install.sh` grants.
-- **Not tested on a CanvasTV yet.** This was written without the TV at hand, so Art Mode's package, its
-  photo folder, and whether Hisense's sensor is visible to apps are found on the TV by `learn`,
-  `findphotos` and `sensors`. Hisense's Art Mode might also draw its pictures on a video layer above
-  apps, which would hide the icons. `./install.sh shot` with Art Mode on shows what's there.
+- **Tested on a 55S7N CanvasTV** (Google TV 12): Art Mode is `com.vt.arttv.artmode/.ArtModeActivity`,
+  and the icons draw over it. Its photo collection only takes uploads, hence `upload`. Other models
+  may differ, so `learn` finds Art Mode on each TV, and `findphotos` (run within 30 minutes of adding
+  a photo from the phone) shows whether a model keeps its photos in a shared folder instead, for
+  `./install.sh photos DIR`.
 
 ## Troubleshooting
 
@@ -122,9 +128,10 @@ power button. That needs the device admin `install.sh` turns on.
 | No icons over Art Mode | `./install.sh status`: the first line says whether the overlay service is on, and "on screen now" must match the Art Mode line. If they differ (Art Mode moved to another screen), run `learn` again with Art Mode showing. |
 | Down does something in Art Mode you need | `./install.sh key DPAD_UP` (or another key). |
 | "Can't write there" in status | `./install.sh` again (it grants storage), or pick a folder under `/sdcard`. |
-| Paintings saved but not in Art Mode | Art Mode reads another folder, or only its own uploads. See [Photo collection](#photo-collection). |
-| TV doesn't come on at 18:00 | `./install.sh status` shows the next check and why it's resting. Then `./install.sh start` with the TV off checks that turning on works on your firmware. `adb logcat -s Canvas` shows every decision. |
-| Art Mode turns off with people in the room | The sensor isn't seeing them: `./install.sh sensors`, then `sensor off` to keep Art Mode on all evening, or a longer `away`. |
+| Paintings saved but not in Art Mode | They go in with `./install.sh upload` while the add-from-phone screen is open. See [Photo collection](#photo-collection). |
+| `upload` says the page didn't answer | The screen closed, or the address changed: open it again and use the new QR address. |
+| TV doesn't come on at 18:00 | `./install.sh status` shows the next check, and whether it already turned the TV on this evening. Then `./install.sh start` with the TV off checks that turning on works on your firmware. `adb logcat -s Canvas` shows every decision. |
+| Art Mode blanks with people in the room | That's Hisense's Motion detector: change its sensitivity or delay in Art Mode's settings, or turn it off. |
 | `remove` says the app can't be uninstalled | The device admin is still on: Settings > Security > Device admin apps, turn Canvas off, then `adb uninstall com.canvashome`. |
 
 ## Undo
