@@ -1,0 +1,3 @@
+build/*
+!build/canvas.apk
+tv.png

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Canvas</string>
+    <string name="overlay_name">Canvas app icons</string>
+    <string name="overlay_description">Shows the Stremio and SmartTube icons over Art Mode, and starts Art Mode in the evening.</string>
+</resources>

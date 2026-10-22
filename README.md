@@ -18,6 +18,10 @@ weather, if you set a place), and nothing else.
 
 `build/frame.apk` is prebuilt. You only need `adb` to install it.
 
+For a Hisense CanvasTV (Google TV), [`canvas/`](canvas/README.md) is a smaller sibling app. It puts the same two
+icons over Hisense's own Art Mode, adds the same paintings to Art Mode's photo collection, and turns Art Mode
+on in the evening when the TV's presence sensor sees someone.
+
 ## Install
 
 Prerequisites on the TV: Settings > My Fire TV > Developer options > **ADB debugging** on. Find its IP
